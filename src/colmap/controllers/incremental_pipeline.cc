@@ -315,6 +315,8 @@ IncrementalPipeline::Status IncrementalPipeline::InitializeReconstruction(
   mapper.FilterImages(mapper_options);
 
   // Initial image pair failed to register.
+  std::cout << "[InitializeReconstruction] NumRegImages: " << reconstruction.NumRegImages() << std::endl;
+  std::cout << "[InitializeReconstruction] NumPoints3D: " << reconstruction.NumPoints3D() << std::endl;
   if (reconstruction.NumRegImages() == 0 || reconstruction.NumPoints3D() == 0) {
     return Status::BAD_INITIAL_PAIR;
   }
@@ -352,6 +354,7 @@ IncrementalPipeline::Status IncrementalPipeline::ReconstructSubModel(
   if (reconstruction->NumRegImages() == 0) {
     const Status init_status = IncrementalPipeline::InitializeReconstruction(
         mapper, mapper_options, *reconstruction);
+    std::cout << "[ReconstructSubModel] init_status: " << int(init_status) << std::endl;
     if (init_status != Status::SUCCESS) {
       return init_status;
     }
@@ -370,6 +373,7 @@ IncrementalPipeline::Status IncrementalPipeline::ReconstructSubModel(
   bool prev_reg_next_success = true;
   do {
     if (CheckIfStopped()) {
+      std::cout << "[ReconstructSubModel] CheckIfStopped" << std::endl;
       break;
     }
 
@@ -379,7 +383,9 @@ IncrementalPipeline::Status IncrementalPipeline::ReconstructSubModel(
     const std::vector<image_t> next_images =
         mapper.FindNextImages(mapper_options);
 
+    std::cout << "[ReconstructSubModel] next_images.size(): " << next_images.size() << std::endl;
     if (next_images.empty()) {
+      std::cout << "[ReconstructSubModel] next_images.empty()" << std::endl;
       break;
     }
 

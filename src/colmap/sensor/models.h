@@ -94,7 +94,8 @@ MAKE_ENUM_CLASS_OVERLOAD_STREAM(CameraModelId,
                                 kSimpleRadialFisheye,    // = 8
                                 kRadialFisheye,          // = 9
                                 kThinPrismFisheye,       // = 10
-                                kRadTanThinPrismFisheye  // = 11
+                                kRadTanThinPrismFisheye,  // = 11
+                                kMeiFisheyeCameraModel   // = 12
 );
 
 #ifndef CAMERA_MODEL_DEFINITIONS
@@ -152,7 +153,8 @@ MAKE_ENUM_CLASS_OVERLOAD_STREAM(CameraModelId,
   CAMERA_MODEL_CASE(FullOpenCVCameraModel)          \
   CAMERA_MODEL_CASE(FOVCameraModel)                 \
   CAMERA_MODEL_CASE(ThinPrismFisheyeCameraModel)    \
-  CAMERA_MODEL_CASE(RadTanThinPrismFisheyeModel)
+  CAMERA_MODEL_CASE(RadTanThinPrismFisheyeModel)    \
+  CAMERA_MODEL_CASE(MeiFisheyeCameraModel)
 #endif
 
 #ifndef CAMERA_MODEL_SWITCH_CASES
@@ -453,6 +455,24 @@ struct RadTanThinPrismFisheyeModel
                            2,
                            12)
   FISHEYE_CAMERA_MODEL_DEFINITIONS
+};
+
+// Mei fish-eye camera model.
+//
+//
+// Parameter list is expected in the following order:
+//
+//    xi, fx, fy, cx, cy, k1, k2, p1, p2
+//    fx, fy, cx, cy, xi, k1, k2, k3, p1, p2
+//
+// See:
+// Christopher Mei, Patrick Rives. Single View Point Omnidirectional Camera Calibration from PlanarGrids.
+// IEEE International Conference on Robotics and Automation (ICRA),
+// Apr 2007, Rome, Italy.pp.3945-3950, 10.1109/ROBOT.2007.364084. hal-00767674
+struct MeiFisheyeCameraModel
+    : public BaseCameraModel<MeiFisheyeCameraModel> {
+  CAMERA_MODEL_DEFINITIONS(CameraModelId::kMeiFisheyeCameraModel, "MEI_FISHEYE", 2, 2, 5)
+  // CAMERA_MODEL_DEFINITIONS(11, "MEI_FISHEYE", 9)
 };
 
 // Check whether camera model with given name or identifier exists.
@@ -1758,6 +1778,118 @@ void RadTanThinPrismFisheyeModel::Distortion(
   *du = x_distorted - u;
   *dv = y_distorted - v;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// MeiFisheyeCameraModel
+
+std::string MeiFisheyeCameraModel::InitializeParamsInfo() {
+  return "fx, fy, cx, cy, xi, k1, k2, p1, p2";
+}
+
+std::array<size_t, 2> MeiFisheyeCameraModel::InitializeFocalLengthIdxs() {
+  return {0, 1};
+}
+
+std::array<size_t, 2> MeiFisheyeCameraModel::InitializePrincipalPointIdxs() {
+  return {2, 3};
+}
+
+std::array<size_t, 5> MeiFisheyeCameraModel::InitializeExtraParamsIdxs() {
+  return {4, 5, 6, 7, 8};
+}
+
+std::vector<double> MeiFisheyeCameraModel::InitializeParams(
+    const double focal_length, const size_t width, const size_t height) {
+  return {focal_length, focal_length, width / 2.0, height / 2.0, 0.0, 0, 0, 0, 0};
+}
+
+// template <typename T>
+// void MeiFisheyeCameraModel::WorldToImage(const T* params, const T u,
+//                                             const T v, T* x, T* y) {
+//   const T xi = params[0];
+//   const T f1 = params[1];
+//   const T f2 = params[2];
+//   const T c1 = params[3];
+//   const T c2 = params[4];
+
+//   // Distortion
+//   T du, dv;
+//   Distortion(&params[5], u, v, &du, &dv);
+//   *x = u + du;
+//   *y = v + dv;
+
+//   // Transform to image coordinates
+//   *x = f1 * *x + c1;
+//   *y = f2 * *y + c2;
+// }
+
+template <typename T>
+void MeiFisheyeCameraModel::ImgFromCam(const T* params, const T u, const T v,
+                                            const T w, T* x, T* y) {
+  const T f1 = params[0];
+  const T f2 = params[1];
+  const T c1 = params[2];
+  const T c2 = params[3];
+  const T xi = params[4];
+  // std::cout << "f1: " << f1 << " f2: " << f2 << " c1: " << c1 << " c2: " << c2
+  //           << " xi: " << xi << std::endl;
+  // std::cout << "k1: " << params[5] << " k2: " << params[6] << " p1: " << params[7]
+  //           << " p2: " << params[8] << std::endl;
+
+  T r = ceres::sqrt(u * u + v * v + w * w);
+  T u_norm = u / (w + xi * r);
+  T v_norm = v / (w + xi * r);
+
+  // Distortion
+  T du, dv;
+  Distortion(&params[5], u_norm, v_norm, &du, &dv);
+  *x = u_norm + du;
+  *y = v_norm + dv;
+
+  // Transform to image coordinates
+  *x = f1 * *x + c1;
+  *y = f2 * *y + c2;
+}
+
+template <typename T>
+void MeiFisheyeCameraModel::CamFromImg(const T* params, const T x,
+                                            const T y, T* u, T* v, T* w_o) {
+  const T f1 = params[0];
+  const T f2 = params[1];
+  const T c1 = params[2];
+  const T c2 = params[3];
+
+  // Lift points to normalized plane
+  *u = (x - c1) / f1;
+  *v = (y - c2) / f2;
+
+  IterativeUndistortion(&params[5], u, v);
+
+  const T xi = params[4];
+  const T r2 = *u * *u + *v * *v;
+  const T w = 1.0 - xi * (r2 + 1.0) / (xi + ceres::sqrt(1.0 + (1.0 - xi * xi) * r2));
+  *u = *u / w;
+  *v = *v / w;
+  *w_o = 1;
+}
+
+template <typename T>
+void MeiFisheyeCameraModel::Distortion(const T* extra_params, const T u, const T v,
+                                   T* du, T* dv) {
+  const T k1 = extra_params[0];
+  const T k2 = extra_params[1];
+  const T p1 = extra_params[2];
+  const T p2 = extra_params[3];
+
+  const T u2 = u * u;
+  const T uv = u * v;
+  const T v2 = v * v;
+  const T r2 = u2 + v2;
+  const T radial = k1 * r2 + k2 * r2 * r2;
+  *du = u * radial + T(2) * p1 * uv + p2 * (r2 + T(2) * u2);
+  *dv = v * radial + T(2) * p2 * uv + p1 * (r2 + T(2) * v2);
+}
+
 
 Eigen::Vector2d CameraModelImgFromCam(const CameraModelId model_id,
                                       const std::vector<double>& params,

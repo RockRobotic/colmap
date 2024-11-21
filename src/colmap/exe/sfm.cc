@@ -46,6 +46,11 @@
 
 namespace colmap {
 
+const Eigen::IOFormat vec_fmt(Eigen::StreamPrecision,
+                              Eigen::DontAlignCols,
+                              ", ",
+                              ", ");
+
 void UpdateDatabasePosePriorsCovariance(const std::string& database_path,
                                         const Eigen::Matrix3d& covariance) {
   Database database(database_path);
@@ -823,6 +828,13 @@ int RunRigBundleAdjuster(int argc, char** argv) {
     LOG(INFO) << StringPrintf("Cameras: %d", camera_rig.NumCameras());
     LOG(INFO) << StringPrintf("Snapshots: %d", camera_rig.NumSnapshots());
 
+    for (size_t cam_id = 1; cam_id <= camera_rig.NumCameras(); ++cam_id) {
+      Rigid3d cam_from_rig = camera_rig.CamFromRig(cam_id);
+      std::cout << "Camera ID " << cam_id << " init transform: " << "Rigid3d("
+           << "quat_xyzw=[" << cam_from_rig.rotation.coeffs().format(vec_fmt) << "], "
+           << "t=[" << cam_from_rig.translation.format(vec_fmt) << "])" << std::endl;
+    }
+
     // Add all registered images to the bundle adjustment configuration.
     for (const auto image_id : reconstruction.RegImageIds()) {
       config.AddImage(image_id);
@@ -840,6 +852,16 @@ int RunRigBundleAdjuster(int argc, char** argv) {
                               reconstruction,
                               camera_rigs);
   THROW_CHECK_NE(bundle_adjuster->Solve().termination_type, ceres::FAILURE);
+
+  for (size_t i = 0; i < camera_rigs.size(); ++i) {
+    const auto& camera_rig = camera_rigs[i];
+    for (size_t cam_id = 1; cam_id <= camera_rig.NumCameras(); ++cam_id) {
+      Rigid3d cam_from_rig = camera_rig.CamFromRig(cam_id);
+      std::cout << "Camera ID " << cam_id << " final transform: " << "Rigid3d("
+           << "quat_xyzw=[" << cam_from_rig.rotation.coeffs().format(vec_fmt) << "], "
+           << "t=[" << cam_from_rig.translation.format(vec_fmt) << "])" << std::endl;
+    }
+  }
 
   reconstruction.Write(output_path);
 

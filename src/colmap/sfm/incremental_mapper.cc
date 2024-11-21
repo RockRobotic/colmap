@@ -236,12 +236,18 @@ std::vector<image_t> IncrementalMapper::FindNextImages(const Options& options) {
     // Only consider images with a sufficient number of visible points.
     if (obs_manager_->NumVisiblePoints3D(image.first) <
         static_cast<size_t>(options.abs_pose_min_num_inliers)) {
+      std::cout << "Image " << image.first << " has too few visible points ("
+                << obs_manager_->NumVisiblePoints3D(image.first) << "/"
+                << obs_manager_->NumObservations(image.first) << ")"
+                << std::endl;
       continue;
     }
 
     // Only try registration for a certain maximum number of times.
     const size_t num_reg_trials = num_reg_trials_[image.first];
     if (num_reg_trials >= static_cast<size_t>(options.max_reg_trials)) {
+      std::cout << "Image " << image.first << " has been tried too many times ("
+                << num_reg_trials << ")" << std::endl;
       continue;
     }
 
