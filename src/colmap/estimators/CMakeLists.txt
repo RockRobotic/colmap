@@ -30,6 +30,7 @@
 
 set(FOLDER_NAME "estimators")
 
+find_package(PoseLib REQUIRED)
 COLMAP_ADD_LIBRARY(
     NAME colmap_estimators
     SRCS

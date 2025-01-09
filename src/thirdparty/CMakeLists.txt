@@ -66,6 +66,7 @@ if(FETCH_POSELIB)
     message(STATUS "Configuring PoseLib... done")
 else()
     find_package(PoseLib REQUIRED)
+    message(STATUS "FOUND PoseLib: ${PoseLib_DIR}")
 endif()
 
 set(CLANG_TIDY_EXE ${CLANG_TIDY_EXE_TEMP})

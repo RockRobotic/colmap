@@ -236,10 +236,10 @@ std::vector<image_t> IncrementalMapper::FindNextImages(const Options& options) {
     // Only consider images with a sufficient number of visible points.
     if (obs_manager_->NumVisiblePoints3D(image.first) <
         static_cast<size_t>(options.abs_pose_min_num_inliers)) {
-      std::cout << "Image " << image.first << " has too few visible points ("
-                << obs_manager_->NumVisiblePoints3D(image.first) << "/"
-                << obs_manager_->NumObservations(image.first) << ")"
-                << std::endl;
+      // std::cout << "Image " << image.first << " has too few visible points ("
+      //           << obs_manager_->NumVisiblePoints3D(image.first) << "/"
+      //           << obs_manager_->NumObservations(image.first) << ")"
+      //           << std::endl;
       continue;
     }
 

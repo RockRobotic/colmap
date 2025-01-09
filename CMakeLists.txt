@@ -213,8 +213,8 @@ include(GenerateVersionDefinitions)
 include_directories(src)
 link_directories(${COLMAP_LINK_DIRS})
 
-add_subdirectory(src/colmap)
 add_subdirectory(src/thirdparty)
+add_subdirectory(src/colmap)
 
 ################################################################################
 # Generate source groups for Visual Studio, XCode, etc.
@@ -334,7 +334,7 @@ set(COLMAP_EXPORT_LIBS
     # Third-party.
     colmap_poisson_recon
     colmap_vlfeat
-    PoseLib
+    # PoseLib
 )
 if(LSD_ENABLED)
     list(APPEND COLMAP_EXPORT_LIBS

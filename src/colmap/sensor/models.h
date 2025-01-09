@@ -95,7 +95,8 @@ MAKE_ENUM_CLASS_OVERLOAD_STREAM(CameraModelId,
                                 kRadialFisheye,          // = 9
                                 kThinPrismFisheye,       // = 10
                                 kRadTanThinPrismFisheye,  // = 11
-                                kMeiFisheyeCameraModel   // = 12
+                                kMeiFisheyeCameraModel,   // = 12
+                                kEquiSimple              // = 13
 );
 
 #ifndef CAMERA_MODEL_DEFINITIONS
@@ -154,7 +155,8 @@ MAKE_ENUM_CLASS_OVERLOAD_STREAM(CameraModelId,
   CAMERA_MODEL_CASE(FOVCameraModel)                 \
   CAMERA_MODEL_CASE(ThinPrismFisheyeCameraModel)    \
   CAMERA_MODEL_CASE(RadTanThinPrismFisheyeModel)    \
-  CAMERA_MODEL_CASE(MeiFisheyeCameraModel)
+  CAMERA_MODEL_CASE(MeiFisheyeCameraModel)          \
+  CAMERA_MODEL_CASE(EquiSimpleCameraModel)
 #endif
 
 #ifndef CAMERA_MODEL_SWITCH_CASES
@@ -473,6 +475,11 @@ struct MeiFisheyeCameraModel
     : public BaseCameraModel<MeiFisheyeCameraModel> {
   CAMERA_MODEL_DEFINITIONS(CameraModelId::kMeiFisheyeCameraModel, "MEI_FISHEYE", 2, 2, 5)
   // CAMERA_MODEL_DEFINITIONS(11, "MEI_FISHEYE", 9)
+};
+
+struct EquiSimpleCameraModel
+    : public BaseCameraModel<EquiSimpleCameraModel> {
+  CAMERA_MODEL_DEFINITIONS(CameraModelId::kEquiSimple, "EQUI_SIMPLE", 1, 2, 0)
 };
 
 // Check whether camera model with given name or identifier exists.
@@ -1851,13 +1858,12 @@ void MeiFisheyeCameraModel::ImgFromCam(const T* params, const T u, const T v,
   *y = f2 * *y + c2;
 }
 
-template <typename T>
-void MeiFisheyeCameraModel::CamFromImg(const T* params, const T x,
-                                            const T y, T* u, T* v, T* w_o) {
-  const T f1 = params[0];
-  const T f2 = params[1];
-  const T c1 = params[2];
-  const T c2 = params[3];
+void MeiFisheyeCameraModel::CamFromImg(const double* params, const double x,
+                                            const double y, double* u, double* v, double* w_o) {
+  const double f1 = params[0];
+  const double f2 = params[1];
+  const double c1 = params[2];
+  const double c2 = params[3];
 
   // Lift points to normalized plane
   *u = (x - c1) / f1;
@@ -1865,9 +1871,9 @@ void MeiFisheyeCameraModel::CamFromImg(const T* params, const T x,
 
   IterativeUndistortion(&params[5], u, v);
 
-  const T xi = params[4];
-  const T r2 = *u * *u + *v * *v;
-  const T w = 1.0 - xi * (r2 + 1.0) / (xi + ceres::sqrt(1.0 + (1.0 - xi * xi) * r2));
+  const double xi = params[4];
+  const double r2 = *u * *u + *v * *v;
+  const double w = 1.0 - xi * (r2 + 1.0) / (xi + ceres::sqrt(1.0 + (1.0 - xi * xi) * r2));
   *u = *u / w;
   *v = *v / w;
   *w_o = 1;
@@ -1888,6 +1894,72 @@ void MeiFisheyeCameraModel::Distortion(const T* extra_params, const T u, const T
   const T radial = k1 * r2 + k2 * r2 * r2;
   *du = u * radial + T(2) * p1 * uv + p2 * (r2 + T(2) * u2);
   *dv = v * radial + T(2) * p2 * uv + p1 * (r2 + T(2) * v2);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PanoramicCameraModel
+
+std::string EquiSimpleCameraModel::InitializeParamsInfo() {
+  return "f, cx, cy";
+}
+
+std::array<size_t, 1> EquiSimpleCameraModel::InitializeFocalLengthIdxs() {
+  return {0};
+}
+
+std::array<size_t, 2>
+EquiSimpleCameraModel::InitializePrincipalPointIdxs() {
+  return {1, 2};
+}
+
+std::array<size_t, 0> EquiSimpleCameraModel::InitializeExtraParamsIdxs() {
+  return {};
+}
+
+std::vector<double> EquiSimpleCameraModel::InitializeParams(
+    const double focal_length, const size_t width, const size_t height) {
+  return {height / M_PI, width / 2.0, height / 2.0};
+}
+
+template <typename T>
+void EquiSimpleCameraModel::ImgFromCam(
+    const T* params, T u, T v, T w, T* x, T* y) {
+  const T f = params[0];
+  const T c1 = params[1];
+  const T c2 = params[2];
+
+  T lon = ceres::atan2(u, w);
+  T lat = ceres::atan2(v, ceres::hypot(u, w));
+
+  *x = lon * f + c1;
+  *y = lat * f + c2;
+}
+
+void EquiSimpleCameraModel::CamFromImg(
+    const double* params, const double x, const double y, double* u, double* v, double* w) {
+  const double f = params[0];
+  const double c1 = params[1];
+  const double c2 = params[2];
+  auto p = (x - c1) / f;
+  auto t = (y - c2) / f;
+  auto cos_t = ceres::cos(t);
+  *u = cos_t * ceres::sin(p);
+  *v = ceres::sin(t);
+  *w = cos_t * ceres::cos(p);
+}
+
+template <>
+template <typename T>
+T BaseCameraModel<EquiSimpleCameraModel>::CamFromImgThreshold(const T* params,
+                                                    const T threshold) {
+
+  const T kErrorFactorNormalPlaneToSphere = T(1.1244554237496478);
+  T mean_focal_length = 0;
+  for (const size_t idx : EquiSimpleCameraModel::focal_length_idxs) {
+    mean_focal_length += params[idx];
+  }
+  mean_focal_length /= EquiSimpleCameraModel::focal_length_idxs.size();
+  return kErrorFactorNormalPlaneToSphere * threshold / mean_focal_length;
 }
 
 
